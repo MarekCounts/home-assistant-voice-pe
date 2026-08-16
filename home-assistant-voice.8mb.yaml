@@ -4,15 +4,11 @@ packages:
 esphome:
   name: ha-voice-8mb
   project:
-    name: Nabu Casa.Home Assistant Voice PE
-    version: dev
+    name: MarekCounts.Home Assistant Voice PE Streaming
+    version: 2026.6.0-streaming.1
 
 esp32:
   flash_size: 8MB
 
-update:
-  - id: !extend update_http_request
-    source: https://firmware.esphome.io/home-assistant-voice-pe/ha-voice-8mb/manifest.json
-
 dashboard_import:
-  package_import_url: github://esphome/home-assistant-voice-pe/home-assistant-voice.8mb.yaml
+  package_import_url: github://MarekCounts/home-assistant-voice-pe/home-assistant-voice.8mb.yaml@dev

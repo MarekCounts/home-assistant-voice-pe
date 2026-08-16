@@ -70,7 +70,7 @@ esp32:
 
       # Moves instructions and read only data from flash into PSRAM on boot.
       # Both enabled allows instructions to execute while a flash operation is in progress without needing to be placed in IRAM.
-      # Considerably speeds up mWW at the cost of using more PSRAM.
+      # This also speeds up the local "stop" model used while timers and long replies are playing.
       CONFIG_SPIRAM_RODATA: "y"
       CONFIG_SPIRAM_FETCH_INSTRUCTIONS: "y"
 
@@ -209,12 +209,15 @@ switch:
             binary_sensor.is_off: hardware_mute_switch
           then:
             - microphone.mute:
+      # A continuously streaming pipeline must be stopped explicitly when muted.
+      - voice_assistant.stop:
     turn_off_action:
       - if:
           condition:
             binary_sensor.is_off: hardware_mute_switch
           then:
             - microphone.unmute:
+            - voice_assistant.start_continuous:
     on_turn_on:
       - script.execute: control_leds
     on_turn_off:
@@ -333,8 +336,12 @@ binary_sensor:
                       - switch.turn_off: timer_ringing
                     else:
                       - if:
+                          # A streaming pipeline is also "running" while it is only
+                          # waiting for a wake word. Only stop an active interaction.
                           condition:
-                            voice_assistant.is_running:
+                            and:
+                              - voice_assistant.is_running:
+                              - lambda: return id(voice_assistant_phase) != ${voice_assist_idle_phase_id};
                           then:
                             - voice_assistant.stop:
                           else:
@@ -522,6 +529,9 @@ binary_sensor:
     internal: true
     pin: GPIO3
     on_press:
+      # The hardware switch changes the effective mute state without invoking
+      # the template switch's turn_on_action, so stop streaming here as well.
+      - voice_assistant.stop:
       # Play mute on sound only if software mute isn't enabled
       - if:
           condition:
@@ -537,6 +547,7 @@ binary_sensor:
           priority: false
           sound_file: "mute_switch_off_sound"
       - microphone.unmute:
+      - voice_assistant.start_continuous:
   # Audio Jack Plugged sensor
   - platform: gpio
     id: jack_plugged
@@ -1521,6 +1532,20 @@ script:
                 then:
                   - micro_wake_word.disable_model: stop
 
+  # A local stop action clears continuous mode in the voice_assistant component.
+  # Resume server-side wake-word streaming after the run has fully ended, unless
+  # either the hardware or software mute switch is active.
+  - id: resume_streaming_wake_word
+    mode: restart
+    then:
+      - if:
+          condition:
+            switch.is_off: master_mute_switch
+          then:
+            - voice_assistant.start_continuous:
+          else:
+            - voice_assistant.stop:
+
 i2s_audio:
   - id: i2s_output
     # i2s_output data pin is gpio10
@@ -1679,8 +1704,9 @@ media_player:
         condition:
           and:
             - switch.is_off: timer_ringing
-            - not:
-                voice_assistant.is_running:
+            # Continuous wake-word streaming counts as "running" even while
+            # idle, so use the interaction phase when deciding to unduck media.
+            - lambda: return id(voice_assistant_phase) == ${voice_assist_idle_phase_id};
             - not:
                 media_player.is_announcing: external_media_player
         then:
@@ -1703,7 +1729,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/esphome/home-assistant-voice-pe
-      ref: dev
+      ref: 0579e7b9d8504264719c593474c85447253c9dc1
     components:
       - voice_kit
     refresh: 0s
@@ -1721,12 +1747,8 @@ micro_wake_word:
     gain_factor: 4
   stop_after_detection: false
   models:
-    - model: https://github.com/kahrendt/microWakeWord/releases/download/okay_nabu_20241226.3/okay_nabu.json
-      id: okay_nabu
-    - model: hey_jarvis
-      id: hey_jarvis
-    - model: hey_mycroft
-      id: hey_mycroft
+    # Normal wake-word detection is streamed to Home Assistant. Keep only the
+    # internal stop model so timers and long spoken replies can be interrupted.
     - model: https://github.com/kahrendt/microWakeWord/releases/download/stop/stop.json
       id: stop
       internal: true
@@ -1743,7 +1765,7 @@ micro_wake_word:
                 switch.is_on: timer_ringing
               then:
                 - switch.turn_off: timer_ringing
-              # Stop voice assistant if running
+              # Stop a long voice-assistant response if one is running.
               else:
                 - if:
                     condition:
@@ -1760,51 +1782,6 @@ micro_wake_word:
                             - media_player.stop:
                                 announcement: true
                                 id: external_media_player
-                          # Start the voice assistant and play the wake sound, if enabled
-                          else:
-                            - if:
-                                condition:
-                                  switch.is_on: wake_sound
-                                then:
-                                  - script.execute:
-                                      id: play_sound
-                                      priority: true
-                                      sound_file: "wake_word_triggered_sound"
-                                  - delay: 300ms
-                            - voice_assistant.start:
-                                wake_word: !lambda return wake_word;
-
-select:
-  - platform: template
-    name: "Wake word sensitivity"
-    id: wake_word_sensitivity
-    optimistic: true
-    initial_option: Slightly sensitive
-    restore_value: true
-    entity_category: config
-    options:
-      - Slightly sensitive
-      - Moderately sensitive
-      - Very sensitive
-    on_value:
-      # Sets specific wake word probabilities computed for each particular model
-      # Note probability cutoffs are set as a quantized uint8 value, each comment has the corresponding floating point cutoff
-      # False Accepts per Hour values are tested against all units and channels from the Dinner Party Corpus.
-      # These cutoffs apply only to the specific models included in the firmware: okay_nabu@20241226.3, hey_jarvis@v2, hey_mycroft@v2
-      lambda: |-
-        if (x == "Slightly sensitive") {
-          id(okay_nabu).set_probability_cutoff(217);    // 0.85 -> 0.000 FAPH on DipCo (Manifest's default)
-          id(hey_jarvis).set_probability_cutoff(247);   // 0.97 -> 0.563 FAPH on DipCo (Manifest's default)
-          id(hey_mycroft).set_probability_cutoff(253);  // 0.99 -> 0.567 FAPH on DipCo
-        } else if (x == "Moderately sensitive") {
-          id(okay_nabu).set_probability_cutoff(176);    // 0.69 -> 0.376 FAPH on DipCo
-          id(hey_jarvis).set_probability_cutoff(235);   // 0.92 -> 0.939 FAPH on DipCo
-          id(hey_mycroft).set_probability_cutoff(242);  // 0.95 -> 1.502 FAPH on DipCo (Manifest's default)
-        } else if (x == "Very sensitive") {
-          id(okay_nabu).set_probability_cutoff(143);    // 0.56 -> 0.751 FAPH on DipCo
-          id(hey_jarvis).set_probability_cutoff(212);   // 0.83 -> 1.502 FAPH on DipCo
-          id(hey_mycroft).set_probability_cutoff(237);  // 0.93 -> 1.878 FAPH on DipCo
-        }
 
 voice_assistant:
   id: va
@@ -1814,14 +1791,28 @@ voice_assistant:
     - microphone: i2s_mics
       channels: 1
   media_player: external_media_player
-  micro_wake_word: mww
-  use_wake_word: false
+  # Home Assistant receives the microphone stream and runs the wake-word stage.
+  # The local micro_wake_word component above is intentionally not attached here.
+  use_wake_word: true
   noise_suppression_level: 0
   auto_gain: 0 dbfs
   volume_multiplier: 1
   on_client_connected:
     - lambda: id(init_in_progress) = false;
+    # Keep the internal stop model available, but normally disabled until a
+    # timer or sufficiently long response enables it. Preserve it if the API
+    # reconnects while a local timer is still ringing.
+    - if:
+        condition:
+          switch.is_off: timer_ringing
+        then:
+          - micro_wake_word.disable_model: stop
     - micro_wake_word.start:
+    - if:
+        condition:
+          switch.is_off: master_mute_switch
+        then:
+          - voice_assistant.start_continuous:
     - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
     - script.execute: control_leds
   on_client_disconnected:
@@ -1849,13 +1840,22 @@ voice_assistant:
               id: play_sound
               priority: true
               sound_file: "error_cloud_expired"
-  # When the voice assistant starts: Play a wake up sound, duck audio.
-  on_start:
+  # With server-side wake-word detection, on_start fires when continuous
+  # streaming begins. Wait for on_listening so media is only ducked after Home
+  # Assistant has actually detected the wake word.
+  on_listening:
+    - if:
+        condition:
+          switch.is_on: wake_sound
+        then:
+          - script.execute:
+              id: play_sound
+              priority: true
+              sound_file: "wake_word_triggered_sound"
     - mixer_speaker.apply_ducking:
         id: media_mixing_input
         decibel_reduction: 20  # Number of dB quieter; higher implies more quiet, 0 implies full volume
         duration: 0.0s         # The duration of the transition (default is no transition)
-  on_listening:
     - lambda: id(voice_assistant_phase) = ${voice_assist_waiting_for_command_phase_id};
     - script.execute: control_leds
   on_stt_vad_start:
@@ -1887,8 +1887,10 @@ voice_assistant:
   # When the voice assistant ends ...
   on_end:
     - wait_until:
-        not:
-          voice_assistant.is_running:
+        # The YAML is_running condition also returns true while continuous mode
+        # is armed, including the internal IDLE state. Check the component state
+        # directly so this cleanup can finish between continuous pipeline runs.
+        lambda: return !id(va).is_running();
     # Stop ducking audio.
     - mixer_speaker.apply_ducking:
         id: media_mixing_input
@@ -1903,6 +1905,7 @@ voice_assistant:
     # Reset the voice assistant phase id and reset the LED animations.
     - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
     - script.execute: control_leds
+    - script.execute: resume_streaming_wake_word
   on_timer_finished:
     - switch.turn_on: timer_ringing
   on_timer_started:
