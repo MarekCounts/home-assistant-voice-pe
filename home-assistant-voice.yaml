@@ -1724,8 +1724,15 @@ voice_kit:
     version: "1.3.1"
     md5: 964635c5bf125529dab14a2472a15401
 
-# External components are pinned to specific commits for reproducible builds.
+# External component sources are explicit; upstream patches use fixed commits.
 external_components:
+  # ESPHome 2026.7.4 can finish a media-player response before playback starts.
+  # Pull this repository's component with separate startup/playback watchdogs
+  # and response-generation guards until the lifecycle fix is upstream.
+  - source: github://MarekCounts/home-assistant-voice-pe@dev
+    components:
+      - voice_assistant
+    refresh: 0s
   # ESPHome 2026.7.4 pins micro-decoder 0.2.0. Pull the narrowly scoped
   # upstream audio dependency bump so HTTP/TTS playback uses micro-decoder
   # 0.4.0, which fixes reader and worker-thread lifecycle races.

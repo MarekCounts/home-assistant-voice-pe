@@ -11,11 +11,13 @@ This firmware keeps the Voice PE microphone connected to Home Assistant while th
 - The center button distinguishes an active interaction from an idle continuous stream.
 - The local internal `stop` model remains available only while a timer or a long response is playing.
 - Stock Home Assistant Voice PE HTTP update manifests are removed from the factory image. An official update would otherwise replace this custom firmware with the stock on-device wake-word configuration. ESPHome OTA remains enabled.
-- The ESPHome toolchain and the external Voice PE component source are pinned for repeatable builds.
+- The ESPHome toolchain and upstream component revisions are explicit for repeatable builds.
 
 The older fork's vendored ESPHome audio-reader timeout patch is intentionally not included. ESPHome's current audio and media-player stack has since been replaced, and the current hardware speaker already uses `timeout: never`.
 
 ESPHome 2026.7.4 still pins micro-decoder 0.2.0. This firmware pulls the upstream, narrowly scoped audio dependency bump to micro-decoder 0.4.0, which includes reader shutdown and worker-thread lifecycle fixes needed for reliable TTS-to-follow-up transitions.
+
+ESPHome 2026.7.4 also starts a hard-coded two-second watchdog when it hands a TTS URL to a media player. If the HTTP announcement takes slightly longer to begin, ESPHome can open the follow-up microphone while its own reply is playing. This repository carries a `voice_assistant` component with a separate 15-second startup watchdog, a post-start playback watchdog, explicit abort/error cleanup, and response-generation guards that prevent a stale callback from affecting a later run. The YAML fetches that component from this repository's `dev` branch so ESPHome Device Builder package imports can resolve it.
 
 ## Build
 
@@ -66,6 +68,8 @@ After flashing, verify each of these:
 - With the mute switch off, the device connects to Home Assistant and remains in its idle LED state while streaming.
 - The selected server-side phrase triggers the wake sound and listening LED state.
 - A full command completes, audio is no longer ducked afterward, and the next wake phrase works without rebooting.
+- A response that takes more than two seconds to begin does not reopen the follow-up microphone before playback starts.
+- For a follow-up question, logs show `Waiting for media player announcement`, then `Media player announcement started`, then one successful `Media player announcement finished`; `START_MICROPHONE` follows the finished marker.
 - The hardware and Home Assistant mute switches stop detection; unmuting resumes it.
 - Music continues at normal volume after a separate announcement finishes.
 - A timer can be cancelled with the local stop phrase while ringing.

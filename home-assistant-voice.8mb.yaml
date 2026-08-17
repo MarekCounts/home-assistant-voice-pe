@@ -5,7 +5,7 @@ esphome:
   name: ha-voice-8mb
   project:
     name: MarekCounts.Home Assistant Voice PE Streaming
-    version: 2026.7.4-streaming.2
+    version: 2026.7.4-streaming.3
 
 esp32:
   flash_size: 8MB
