@@ -6,4 +6,4 @@ The small internal **stop** model remains local so a ringing timer or a long spo
 
 See [STREAMING_WAKE_WORD.md](STREAMING_WAKE_WORD.md) for the architecture, reproducible build command, flashing steps, Home Assistant configuration, and troubleshooting.
 
-This work ports the approach demonstrated by [JLo's experimental configuration](https://gist.github.com/jlpouffier/41351187e2f6f94e797382a658702433) and [Rob Meades's firmware fork](https://github.com/RobMeades/home-assistant-voice-pe) onto ESPHome 2026.6 and the current Voice PE audio stack.
+This work ports the approach demonstrated by [JLo's experimental configuration](https://gist.github.com/jlpouffier/41351187e2f6f94e797382a658702433) and [Rob Meades's firmware fork](https://github.com/RobMeades/home-assistant-voice-pe) onto ESPHome 2026.7.4 and the current Voice PE audio stack.

@@ -38,7 +38,7 @@ esphome:
   name: home-assistant-voice
   friendly_name: Home Assistant Voice
   name_add_mac_suffix: true
-  min_version: 2026.6.0
+  min_version: 2026.7.4
   on_boot:
     priority: 375
     then:
@@ -1724,8 +1724,18 @@ voice_kit:
     version: "1.3.1"
     md5: 964635c5bf125529dab14a2472a15401
 
-# Sendspin related components are pinned to specific commits for reproducible builds
+# External components are pinned to specific commits for reproducible builds.
 external_components:
+  # ESPHome 2026.7.4 pins micro-decoder 0.2.0. Pull the narrowly scoped
+  # upstream audio dependency bump so HTTP/TTS playback uses micro-decoder
+  # 0.4.0, which fixes reader and worker-thread lifecycle races.
+  - source:
+      type: git
+      url: https://github.com/esphome/esphome
+      ref: 4a7de87bffde0729fccec91735480015c54a31e2
+    components:
+      - audio
+    refresh: 0s
   - source:
       type: git
       url: https://github.com/esphome/home-assistant-voice-pe
@@ -1820,6 +1830,10 @@ voice_assistant:
     - lambda: id(voice_assistant_phase) = ${voice_assist_not_ready_phase_id};
     - script.execute: control_leds
   on_error:
+    # request_stop() clears ESPHome's internal continue_conversation flag.
+    # Without this, a failed follow-up is immediately restarted as another
+    # wake-word-free follow-up, producing a tight stt-stream-failed loop.
+    - voice_assistant.stop:
     # Only set the error phase if the error code is different than duplicate_wake_up_detected or stt-no-text-recognized
     # These two are ignored for a better user experience
     - if:

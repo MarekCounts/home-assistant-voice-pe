@@ -13,7 +13,9 @@ This firmware keeps the Voice PE microphone connected to Home Assistant while th
 - Stock Home Assistant Voice PE HTTP update manifests are removed from the factory image. An official update would otherwise replace this custom firmware with the stock on-device wake-word configuration. ESPHome OTA remains enabled.
 - The ESPHome toolchain and the external Voice PE component source are pinned for repeatable builds.
 
-The older fork's vendored ESPHome audio-reader timeout patch is intentionally not included. ESPHome's 2026.6 audio and media-player stack has since been replaced, and the current hardware speaker already uses `timeout: never`.
+The older fork's vendored ESPHome audio-reader timeout patch is intentionally not included. ESPHome's current audio and media-player stack has since been replaced, and the current hardware speaker already uses `timeout: never`.
+
+ESPHome 2026.7.4 still pins micro-decoder 0.2.0. This firmware pulls the upstream, narrowly scoped audio dependency bump to micro-decoder 0.4.0, which includes reader shutdown and worker-thread lifecycle fixes needed for reliable TTS-to-follow-up transitions.
 
 ## Build
 
@@ -23,14 +25,14 @@ From this repository directory, run:
 docker run --rm \
   -v "$PWD:/config" \
   -w /config \
-  ghcr.io/esphome/esphome:2026.6.0 \
+  ghcr.io/esphome/esphome:2026.7.4 \
   compile home-assistant-voice.factory.yaml
 ```
 
 The two useful outputs are:
 
-- Initial USB install: `.esphome/build/home-assistant-voice/.pioenvs/home-assistant-voice/firmware.factory.bin`
-- Later ESPHome OTA install: `.esphome/build/home-assistant-voice/.pioenvs/home-assistant-voice/firmware.ota.bin`
+- Initial USB install: `.esphome/build/home-assistant-voice/build/firmware.factory.bin`
+- Later ESPHome OTA install: `.esphome/build/home-assistant-voice/build/firmware.ota.bin`
 
 The normal Voice PE has 16 MB flash and should use `home-assistant-voice.factory.yaml`. `home-assistant-voice.8mb.yaml` is retained only for the less common 8 MB hardware variant.
 
