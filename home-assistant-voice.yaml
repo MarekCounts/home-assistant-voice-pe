@@ -1729,7 +1729,11 @@ external_components:
   # ESPHome 2026.7.4 can finish a media-player response before playback starts.
   # Pull this repository's component with separate startup/playback watchdogs
   # and response-generation guards until the lifecycle fix is upstream.
-  - source: github://MarekCounts/home-assistant-voice-pe@dev
+  - source:
+      type: git
+      url: https://github.com/MarekCounts/home-assistant-voice-pe
+      ref: dev
+      path: components
     components:
       - voice_assistant
     refresh: 0s
